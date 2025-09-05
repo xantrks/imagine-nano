@@ -22,12 +22,12 @@ interface StartScreenProps {
 
 // Static placeholder data to match the screenshot
 const placeholderFiles: GalleryItem[] = [
-    { name: 'Puppy and Bunny.psdc', time: '3 minutes ago', url: 'https://images.unsplash.com/photo-1593134257782-e895c7c79604?w=400&q=80', type: 'placeholder' },
-    { name: 'APC_0005-hdr.dng', time: '5 minutes ago', url: 'https://images.unsplash.com/photo-1608303598013-3375829a28b7?w=400&q=80', type: 'placeholder' },
-    { name: 'churchsteps2.jpg', time: '5 minutes ago', url: 'https://images.unsplash.com/photo-1542992088-8884787a7401?w=400&q=80', type: 'placeholder' },
+    { name: 'Tech Isometric.psd', time: '3 minutes ago', url: 'https://images.unsplash.com/photo-1593106578502-2842917711a2?w=400&q=80', type: 'placeholder' },
+    { name: 'Lakeside Journey.png', time: '5 minutes ago', url: 'https://images.unsplash.com/photo-1507009668383-3d3a07806f4d?w=400&q=80', type: 'placeholder' },
+    { name: 'Dolomites.jpg', time: '5 minutes ago', url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=400&q=80', type: 'placeholder' },
     { name: 'IMG_1507.jpg', time: '5 minutes ago', url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400&q=80', type: 'placeholder' },
     { name: 'IMG_1536_edited-1.psd', time: '6 minutes ago', url: 'https://images.unsplash.com/photo-1470240731273-7821a6eeb6bd?w=400&q=80', type: 'placeholder' },
-    { name: 'PS Sample File 1.psd', time: '6 minutes ago', url: 'https://images.unsplash.com/photo-1444703686981-a3abbc4d42e2?w=400&q=80', type: 'placeholder' },
+    { name: 'Cabin in Woods.psd', time: '6 minutes ago', url: 'https://images.unsplash.com/photo-1559703248-dca719707ee1?w=400&q=80', type: 'placeholder' },
     { name: 'IMG_1497.jpg', time: '6 minutes ago', url: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?w=400&q=80', type: 'placeholder' },
 ];
 
@@ -97,21 +97,15 @@ const StartScreen: React.FC<StartScreenProps> = ({ onFileSelect, galleryItems })
 
       {/* Main Content */}
       <main className="flex-1 p-8 overflow-y-auto">
-        {/* Suggestions Section */}
+        {/* Branding Section */}
         <section className="mb-10">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-white flex items-center gap-2">Suggestions <InfoIcon className="w-5 h-5 text-gray-500" /></h2>
-                <button className="text-sm text-gray-400 hover:text-white">Hide suggestions</button>
-            </div>
-            <div className="bg-[#3c3c3c] rounded-lg p-6 flex items-center justify-between gap-6">
+            <div className="bg-[#3c3c3c] rounded-lg p-6 flex items-center justify-between gap-8">
                 <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-1">Popular now</p>
-                    <h3 className="text-xl font-bold text-white mb-2">Change the background of a photo</h3>
-                    <p className="text-sm text-gray-400 mb-4">Learn how to quickly and easily give your image a new background.</p>
-                    <button className="text-sm font-semibold text-white bg-[#535353] hover:bg-[#636363] py-2 px-5 rounded-full transition-colors">View tutorial</button>
+                    <h2 className="text-4xl font-extrabold text-white mb-2 tracking-tight">Imagine Nano</h2>
+                    <p className="text-lg text-gray-400">Photoshop reimagined for the age of AI.</p>
                 </div>
-                <div className="w-64 h-36 rounded-md overflow-hidden flex-shrink-0">
-                    <img src="https://images.unsplash.com/photo-1628999333358-69022c4516a2?w=400&q=80" alt="Desert fashion" className="w-full h-full object-cover"/>
+                <div className="w-80 h-48 rounded-md overflow-hidden flex-shrink-0">
+                    <img src="https://images.unsplash.com/photo-1600585152220-90363fe7e115?w=800&q=80" alt="Modern house in a scenic landscape" className="w-full h-full object-cover"/>
                 </div>
             </div>
         </section>

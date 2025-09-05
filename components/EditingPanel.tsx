@@ -8,6 +8,8 @@ import { UndoIcon, RedoIcon, EyeIcon, InfoIcon, SparklesIcon } from './icons';
 import GenerativePanel from './GenerativePanel';
 import { features } from '../features';
 import FilterPanel from './FilterPanel';
+import CropPanel from './CropPanel';
+import MapToolPanel from './MapToolPanel';
 
 export interface Feature {
     name: string;
@@ -17,6 +19,8 @@ export interface Feature {
     isGlobal: boolean;
     systemInstruction: string;
     instantPrompt?: string;
+    toolType?: 'edit' | 'map';
+    options?: { styles?: string[] };
 }
 
 interface EditingPanelProps {
@@ -25,8 +29,8 @@ interface EditingPanelProps {
     onPromptChange: (prompt: string) => void;
     onGenerate: () => void;
     isReadyToGenerate: boolean;
-    referenceImage: File | null;
-    onReferenceImageChange: (file: File | null) => void;
+    referenceImages: File[];
+    onReferenceImagesChange: (files: File[]) => void;
 
     // History and actions
     onUndo: () => void;
@@ -47,10 +51,18 @@ interface EditingPanelProps {
     onSelectedFeatureChange: (feature: Feature) => void;
 
     // Tabs
-    activeTab: 'features' | 'filters' | 'generative';
-    onTabChange: (tab: 'features' | 'filters' | 'generative') => void;
+    activeTab: 'features' | 'filters' | 'generative' | 'crop';
+    onTabChange: (tab: 'features' | 'filters' | 'generative' | 'crop') => void;
     onInstantApply: (featureName: string) => void;
     onApplyFilter: (prompt: string) => void;
+    
+    // Crop actions
+    onApplyCrop: () => void;
+    onAspectChange: (aspect: number | undefined) => void;
+
+    // Map Tool options
+    mapOptions: { style?: string };
+    onMapOptionsChange: (options: { style?: string }) => void;
 }
 
 // ChevronDownIcon component for the accordion
@@ -63,6 +75,7 @@ const AccordionChevron: React.FC<{ isOpen: boolean }> = ({ isOpen }) => (
 const EditingPanel: React.FC<EditingPanelProps> = (props) => {
     const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
         "Core Editing Tools": true,
+        "Creative & Fun Tools": true,
     });
     const [viewingFeature, setViewingFeature] = useState<Feature | null>(null);
 
@@ -80,7 +93,7 @@ const EditingPanel: React.FC<EditingPanelProps> = (props) => {
         }
     };
 
-    const handleTabChange = (tab: 'features' | 'filters' | 'generative') => {
+    const handleTabChange = (tab: 'features' | 'filters' | 'generative' | 'crop') => {
         setViewingFeature(null);
         props.onTabChange(tab);
     }
@@ -134,8 +147,20 @@ const EditingPanel: React.FC<EditingPanelProps> = (props) => {
     const renderContent = () => {
         switch(props.activeTab) {
             case 'features':
-                return viewingFeature ? (
-                    <GenerativePanel 
+                if (viewingFeature) {
+                    if (viewingFeature.toolType === 'map') {
+                        return <MapToolPanel 
+                            feature={viewingFeature}
+                            onBack={() => setViewingFeature(null)}
+                            prompt={props.prompt}
+                            onPromptChange={props.onPromptChange}
+                            onGenerate={props.onGenerate}
+                            isLoading={props.isLoading}
+                            options={props.mapOptions}
+                            onOptionsChange={props.onMapOptionsChange}
+                        />;
+                    }
+                    return <GenerativePanel 
                         title={viewingFeature.name}
                         placeholder={viewingFeature.samplePrompts[0] || 'Describe your edit...'}
                         showBackButton={true}
@@ -145,10 +170,11 @@ const EditingPanel: React.FC<EditingPanelProps> = (props) => {
                         onGenerate={props.onGenerate}
                         isLoading={props.isLoading}
                         isReady={props.isReadyToGenerate}
-                        referenceImage={props.referenceImage}
-                        onReferenceImageChange={props.onReferenceImageChange}
+                        referenceImages={props.referenceImages}
+                        onReferenceImagesChange={props.onReferenceImagesChange}
                     />
-                ) : renderFeaturesList();
+                }
+                return renderFeaturesList();
             case 'filters':
                  return (
                     <FilterPanel
@@ -164,8 +190,16 @@ const EditingPanel: React.FC<EditingPanelProps> = (props) => {
                         onGenerate={props.onGenerate}
                         isLoading={props.isLoading}
                         isReady={props.isReadyToGenerate}
-                        referenceImage={props.referenceImage}
-                        onReferenceImageChange={props.onReferenceImageChange}
+                        referenceImages={props.referenceImages}
+                        onReferenceImagesChange={props.onReferenceImagesChange}
+                    />
+                );
+            case 'crop':
+                return (
+                    <CropPanel 
+                        onApplyCrop={props.onApplyCrop}
+                        onAspectChange={props.onAspectChange}
+                        isLoading={props.isLoading}
                     />
                 );
             default:
@@ -194,7 +228,13 @@ const EditingPanel: React.FC<EditingPanelProps> = (props) => {
                     onClick={() => handleTabChange('generative')}
                     className={`flex-grow text-center text-sm font-semibold py-2 rounded-md transition-colors ${props.activeTab === 'generative' ? 'bg-[#4a4a4a] text-white' : 'text-gray-400 hover:bg-[#3c3c3c]'}`}
                 >
-                    Generative Layer
+                    Generative
+                </button>
+                 <button 
+                    onClick={() => handleTabChange('crop')}
+                    className={`flex-grow text-center text-sm font-semibold py-2 rounded-md transition-colors ${props.activeTab === 'crop' ? 'bg-[#4a4a4a] text-white' : 'text-gray-400 hover:bg-[#3c3c3c]'}`}
+                >
+                    Crop
                 </button>
             </div>
             

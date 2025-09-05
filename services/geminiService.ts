@@ -69,7 +69,7 @@ const handleApiResponse = (
  * @param userPrompt The text prompt from the user describing the desired edit.
  * @param systemInstruction A detailed prompt defining the AI's role and the specific task.
  * @param hotspot Optional {x, y} coordinates on the image to focus the edit.
- * @param referenceImage Optional image for general reference (style, composition, object).
+ * @param referenceImages Optional array of images for context (style, composition, objects).
  * @returns A promise that resolves to the data URL of the edited image.
  */
 export const generateEditedImage = async (
@@ -77,7 +77,7 @@ export const generateEditedImage = async (
     userPrompt: string,
     systemInstruction: string,
     hotspot: { x: number, y: number } | null,
-    referenceImage?: File | null
+    referenceImages: File[]
 ): Promise<string> => {
     console.log(`Starting generative task with instruction:`, systemInstruction);
     
@@ -96,10 +96,12 @@ export const generateEditedImage = async (
         prompt += `\nEdit Location: Focus on the area around pixel coordinates (x: ${hotspot.x}, y: ${hotspot.y}).`;
     }
 
-    if (referenceImage) {
-        console.log('Adding generic reference image.');
-        parts.push(await fileToPart(referenceImage));
-        prompt += `\nAn additional reference image has been provided. Use it as context for the edit. It could be for style, composition, or to provide an object to be included. Infer the user's intent from their prompt.`;
+    if (referenceImages && referenceImages.length > 0) {
+        console.log(`Adding ${referenceImages.length} reference image(s).`);
+        for (const refImage of referenceImages) {
+            parts.push(await fileToPart(refImage));
+        }
+        prompt += `\n${referenceImages.length} reference image(s) have been provided. These could contain objects, furniture, or clothing to be placed in the scene, or be for style/composition reference. Use them as context for the edit and infer the user's intent from their prompt.`;
     }
 
     const textPart = { text: prompt };
@@ -113,4 +115,41 @@ export const generateEditedImage = async (
     console.log('Received response from model.', response);
 
     return handleApiResponse(response, 'AI edit');
+};
+
+
+/**
+ * Generates an image from a text prompt using a text-to-image model.
+ * @param prompt The text prompt describing the desired image.
+ * @returns A promise that resolves to the data URL of the generated image.
+ */
+export const generateImageFromText = async (
+    prompt: string
+): Promise<string> => {
+    console.log(`Starting text-to-image generation with prompt:`, prompt);
+
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: prompt,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/png',
+            },
+        });
+        console.log('Received response from text-to-image model.', response);
+
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
+            return `data:image/png;base64,${base64ImageBytes}`;
+        } else {
+            throw new Error("The AI model did not return an image. This might be due to safety settings or an issue with the prompt.");
+        }
+    } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during image generation.';
+        console.error(errorMessage, err);
+        throw new Error(`Failed to generate the image. ${errorMessage}`);
+    }
 };

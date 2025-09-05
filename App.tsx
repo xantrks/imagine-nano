@@ -6,11 +6,14 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { generateEditedImage } from './services/geminiService';
+import { generateImageFromText } from './services/geminiService';
 import Header from './components/Header';
 import Spinner from './components/Spinner';
 import StartScreen from './components/StartScreen';
 import EditingPanel, { Feature } from './components/EditingPanel';
 import { features, filters, generativeLayerFeature } from './features';
+import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
+
 
 // Helper to convert a data URL string to a File object
 const dataURLtoFile = (dataurl: string, filename: string): File => {
@@ -37,6 +40,26 @@ const getFeatureByName = (name: string): Feature | undefined => {
   return undefined;
 };
 
+function centerAspectCrop(
+  mediaWidth: number,
+  mediaHeight: number,
+  aspect: number,
+): Crop {
+  return centerCrop(
+    makeAspectCrop(
+      {
+        unit: '%',
+        width: 90,
+      },
+      aspect,
+      mediaWidth,
+      mediaHeight,
+    ),
+    mediaWidth,
+    mediaHeight,
+  );
+}
+
 const App: React.FC = () => {
   const [history, setHistory] = useState<File[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
@@ -49,13 +72,22 @@ const App: React.FC = () => {
   const [isComparing, setIsComparing] = useState<boolean>(false);
   const imgRef = useRef<HTMLImageElement>(null);
   
-  const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const [referenceImages, setReferenceImages] = useState<File[]>([]);
   
-  const [activeTab, setActiveTab] = useState<'features' | 'filters' | 'generative'>('features');
+  const [activeTab, setActiveTab] = useState<'features' | 'filters' | 'generative' | 'crop'>('features');
   const [selectedFeature, setSelectedFeature] = useState<Feature>(features["Core Editing Tools"][0]);
 
   const [galleryItems, setGalleryItems] = useState<File[]>([]);
   const [showSaveNotification, setShowSaveNotification] = useState<boolean>(false);
+  
+  // New state for map tool options
+  // FIX: Explicitly type `mapOptions` state to match the expected prop type in child components.
+  const [mapOptions, setMapOptions] = useState<{ style?: string }>({ style: 'Watercolor' });
+
+  // Crop state
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [aspect, setAspect] = useState<number | undefined>();
 
   const isGlobalFeature = selectedFeature.isGlobal;
   const isReadyToGenerate = isGlobalFeature ? !!prompt.trim() : !!prompt.trim() && !!editHotspot;
@@ -107,6 +139,25 @@ const App: React.FC = () => {
     setDisplayHotspot(null);
   }, []);
 
+  const runImageGenerationFromText = useCallback(async (
+      fullPrompt: string
+  ) => {
+      setIsLoading(true);
+      setError(null);
+      try {
+          const generatedImageUrl = await generateImageFromText(fullPrompt);
+          const newImageFile = dataURLtoFile(generatedImageUrl, `generated-${Date.now()}.png`);
+          handleImageUpload(newImageFile); 
+          setPrompt('');
+      } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+          setError(`Failed to generate the image. ${errorMessage}`);
+          console.error(err);
+      } finally {
+          setIsLoading(false);
+      }
+  }, [handleImageUpload]);
+
   const runGeneration = useCallback(async (
     systemInstruction: string,
     userPrompt: string,
@@ -126,7 +177,7 @@ const App: React.FC = () => {
               userPrompt,
               systemInstruction,
               hotspot,
-              referenceImage
+              referenceImages
           );
           const newImageFile = dataURLtoFile(editedImageUrl, `edited-${Date.now()}.png`);
           addImageToHistory(newImageFile);
@@ -139,7 +190,7 @@ const App: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  }, [currentImage, referenceImage, addImageToHistory]);
+  }, [currentImage, referenceImages, addImageToHistory]);
 
   const handleInstantApply = useCallback((featureName: string) => {
     const feature = getFeatureByName(featureName);
@@ -161,15 +212,84 @@ Output: Return ONLY the final filtered image. Do not return text.`;
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) {
-        setError('Please enter a description for your edit.');
+        setError('Please enter a description or location.');
         return;
     }
+
+    if (selectedFeature.toolType === 'map') {
+        let fullPrompt = `${selectedFeature.systemInstruction}\n\nLocation: "${prompt}"`;
+        if (selectedFeature.name === "Map Painter") {
+            fullPrompt += `\n\nStyle: "${mapOptions.style}"`;
+        }
+        runImageGenerationFromText(fullPrompt);
+        return;
+    }
+
     if (!isGlobalFeature && !editHotspot) {
         setError('Please click on the image to select an area to edit for this feature.');
         return;
     }
     runGeneration(selectedFeature.systemInstruction, prompt, editHotspot);
-  }, [prompt, editHotspot, selectedFeature, isGlobalFeature, runGeneration]);
+  }, [prompt, editHotspot, selectedFeature, isGlobalFeature, runGeneration, runImageGenerationFromText, mapOptions]);
+
+  const handleApplyCrop = useCallback(() => {
+    if (!completedCrop || !imgRef.current) {
+        setError("No crop selection has been made.");
+        return;
+    }
+    if (!currentImage) {
+        setError("Cannot crop, no image is loaded.");
+        return;
+    }
+
+    const image = imgRef.current;
+    const canvas = document.createElement('canvas');
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    
+    canvas.width = completedCrop.width * scaleX;
+    canvas.height = completedCrop.height * scaleY;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        setError('Could not get canvas context for cropping.');
+        return;
+    }
+
+    const cropX = completedCrop.x * scaleX;
+    const cropY = completedCrop.y * scaleY;
+    
+    ctx.drawImage(
+        image,
+        cropX,
+        cropY,
+        canvas.width,
+        canvas.height,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    const base64Image = canvas.toDataURL(currentImage.type || 'image/png');
+    const newImageFile = dataURLtoFile(base64Image, `cropped-${Date.now()}.png`);
+    addImageToHistory(newImageFile);
+    
+    setActiveTab('features'); // Go back to features after crop
+    setCrop(undefined);
+    setCompletedCrop(undefined);
+  }, [completedCrop, currentImage, addImageToHistory]);
+
+  const handleAspectChange = (newAspect: number | undefined) => {
+    setAspect(newAspect);
+    if (imgRef.current && newAspect) {
+        const { width, height } = imgRef.current;
+        const newCrop = centerAspectCrop(width, height, newAspect);
+        setCrop(newCrop);
+    } else {
+        setCrop(undefined);
+    }
+  };
 
 
   const handleUndo = useCallback(() => {
@@ -204,6 +324,7 @@ Output: Return ONLY the final filtered image. Do not return text.`;
       setPrompt('');
       setEditHotspot(null);
       setDisplayHotspot(null);
+      setReferenceImages([]);
   }, []);
 
   const handleDownload = useCallback(() => {
@@ -233,7 +354,7 @@ Output: Return ONLY the final filtered image. Do not return text.`;
   };
 
   const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
-    if (isGlobalFeature) return; // Don't set hotspot for global features
+    if (isGlobalFeature || selectedFeature.toolType === 'map') return;
     const img = e.currentTarget;
     const rect = img.getBoundingClientRect();
 
@@ -252,10 +373,13 @@ Output: Return ONLY the final filtered image. Do not return text.`;
     setEditHotspot({ x: originalX, y: originalY });
 };
 
-const handleTabChange = useCallback((tab: 'features' | 'filters' | 'generative') => {
+const handleTabChange = useCallback((tab: 'features' | 'filters' | 'generative' | 'crop') => {
     setActiveTab(tab);
     if (tab === 'generative') {
         setSelectedFeature(generativeLayerFeature);
+    } else if (tab === 'crop') {
+        setCrop(undefined);
+        setCompletedCrop(undefined);
     }
 }, []);
 
@@ -282,37 +406,56 @@ const handleTabChange = useCallback((tab: 'features' | 'filters' | 'generative')
         <>
             {/* Left column for image */}
             <div className="flex-grow relative flex items-center justify-center p-8 overflow-auto">
-                <div className="relative">
-                    {originalImageUrl && (
-                        <img
-                            key={originalImageUrl}
-                            src={originalImageUrl}
-                            alt="Original"
-                            className="w-full h-auto object-contain max-h-[calc(100vh-112px)] pointer-events-none"
-                        />
-                    )}
-                    {currentImageUrl && <img
-                        ref={imgRef}
-                        key={currentImageUrl}
-                        src={currentImageUrl}
-                        alt="Current"
-                        onClick={handleImageClick}
-                        className={`absolute top-0 left-0 w-full h-auto object-contain max-h-[calc(100vh-112px)] transition-opacity duration-200 ease-in-out ${isComparing ? 'opacity-0' : 'opacity-100'} ${!isGlobalFeature ? 'cursor-crosshair' : ''}`}
-                    />}
-                    {displayHotspot && !isLoading && (
-                        <div 
-                            className="absolute rounded-full w-6 h-6 bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2 z-10"
-                            style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px` }}
+                {activeTab === 'crop' ? (
+                    currentImageUrl &&
+                        <ReactCrop
+                            crop={crop}
+                            onChange={c => setCrop(c)}
+                            onComplete={(c) => setCompletedCrop(c)}
+                            aspect={aspect}
+                            minWidth={50}
                         >
-                            <div className="absolute inset-0 rounded-full w-6 h-6 animate-ping bg-blue-400"></div>
+                            <img
+                                ref={imgRef}
+                                src={currentImageUrl}
+                                alt="Crop preview"
+                                className="object-contain max-h-[calc(100vh-112px)]"
+                            />
+                        </ReactCrop>
+                    ) : (
+                        <div className="relative">
+                            {originalImageUrl && (
+                                <img
+                                    key={originalImageUrl}
+                                    src={originalImageUrl}
+                                    alt="Original"
+                                    className="w-full h-auto object-contain max-h-[calc(100vh-112px)] pointer-events-none"
+                                />
+                            )}
+                            {currentImageUrl && <img
+                                ref={imgRef}
+                                key={currentImageUrl}
+                                src={currentImageUrl}
+                                alt="Current"
+                                onClick={handleImageClick}
+                                className={`absolute top-0 left-0 w-full h-auto object-contain max-h-[calc(100vh-112px)] transition-opacity duration-200 ease-in-out ${isComparing ? 'opacity-0' : 'opacity-100'} ${!isGlobalFeature ? 'cursor-crosshair' : ''}`}
+                            />}
+                            {displayHotspot && !isLoading && (
+                                <div 
+                                    className="absolute rounded-full w-6 h-6 bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2 z-10"
+                                    style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px` }}
+                                >
+                                    <div className="absolute inset-0 rounded-full w-6 h-6 animate-ping bg-blue-400"></div>
+                                </div>
+                            )}
+                            {currentImageUrl && !isGlobalFeature && !editHotspot && !isLoading && selectedFeature.toolType !== 'map' && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none animate-fade-in">
+                                    <p className="text-white text-lg font-semibold bg-black/50 p-4 rounded-md">Click on the image to select an edit area</p>
+                                </div>
+                            )}
                         </div>
-                    )}
-                    {currentImageUrl && !isGlobalFeature && !editHotspot && !isLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none animate-fade-in">
-                            <p className="text-white text-lg font-semibold bg-black/50 p-4 rounded-md">Click on the image to select an edit area</p>
-                        </div>
-                    )}
-                </div>
+                    )
+                }
             </div>
             
             {/* Right column for controls */}
@@ -322,8 +465,8 @@ const handleTabChange = useCallback((tab: 'features' | 'filters' | 'generative')
                     onPromptChange={setPrompt}
                     onGenerate={handleGenerate}
                     isReadyToGenerate={isReadyToGenerate}
-                    referenceImage={referenceImage}
-                    onReferenceImageChange={setReferenceImage}
+                    referenceImages={referenceImages}
+                    onReferenceImagesChange={setReferenceImages}
                     onUndo={handleUndo}
                     canUndo={canUndo}
                     onRedo={handleRedo}
@@ -340,6 +483,10 @@ const handleTabChange = useCallback((tab: 'features' | 'filters' | 'generative')
                     onTabChange={handleTabChange}
                     onInstantApply={handleInstantApply}
                     onApplyFilter={handleApplyFilter}
+                    onApplyCrop={handleApplyCrop}
+                    onAspectChange={handleAspectChange}
+                    mapOptions={mapOptions}
+                    onMapOptionsChange={setMapOptions}
                 />
             </aside>
         </>

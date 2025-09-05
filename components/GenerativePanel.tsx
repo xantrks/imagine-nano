@@ -4,7 +4,7 @@
 */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { CompositionReferenceIcon, TrashIcon, ChevronLeftIcon } from './icons';
+import { CompositionReferenceIcon, TrashIcon, ChevronLeftIcon, PlusIcon } from './icons';
 
 interface GenerativePanelProps {
     prompt: string;
@@ -12,8 +12,8 @@ interface GenerativePanelProps {
     onGenerate: () => void;
     isLoading: boolean;
     isReady: boolean;
-    referenceImage: File | null;
-    onReferenceImageChange: (file: File | null) => void;
+    referenceImages: File[];
+    onReferenceImagesChange: (files: File[]) => void;
     title?: string;
     placeholder?: string;
     showBackButton?: boolean;
@@ -26,29 +26,28 @@ const GenerativePanel: React.FC<GenerativePanelProps> = ({
     onGenerate,
     isLoading,
     isReady,
-    referenceImage,
-    onReferenceImageChange,
+    referenceImages,
+    onReferenceImagesChange,
     title = "Generative Layer",
     placeholder = "Describe a global change to the image...",
     showBackButton = false,
     onBack,
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
     useEffect(() => {
-        if (referenceImage) {
-            const url = URL.createObjectURL(referenceImage);
-            setImagePreviewUrl(url);
-            return () => URL.revokeObjectURL(url);
-        } else {
-            setImagePreviewUrl(null);
-        }
-    }, [referenceImage]);
+        const urls = referenceImages.map(file => URL.createObjectURL(file));
+        setPreviewUrls(urls);
+        return () => {
+            urls.forEach(url => URL.revokeObjectURL(url));
+        };
+    }, [referenceImages]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            onReferenceImageChange(e.target.files[0]);
+        if (e.target.files) {
+            const newFiles = Array.from(e.target.files);
+            onReferenceImagesChange([...referenceImages, ...newFiles]);
         }
     };
 
@@ -56,8 +55,8 @@ const GenerativePanel: React.FC<GenerativePanelProps> = ({
         fileInputRef.current?.click();
     };
 
-    const handleRemoveImage = () => {
-        onReferenceImageChange(null);
+    const handleRemoveImage = (indexToRemove: number) => {
+        onReferenceImagesChange(referenceImages.filter((_, index) => index !== indexToRemove));
         if(fileInputRef.current) {
             fileInputRef.current.value = "";
         }
@@ -93,33 +92,36 @@ const GenerativePanel: React.FC<GenerativePanelProps> = ({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                    <h3 className="text-xs text-gray-400">Reference Image</h3>
-                    {imagePreviewUrl ? (
-                         <div className="relative w-full aspect-video bg-[#2b2b2b] border border-black/30 rounded-md">
-                            <img src={imagePreviewUrl} alt="Reference" className="w-full h-full object-contain rounded" />
-                            <button 
-                                onClick={handleRemoveImage}
-                                className="absolute top-2 right-2 bg-gray-800/70 hover:bg-red-500 text-white rounded-full p-1 transition-colors"
-                                aria-label="Remove image"
-                            >
-                                <TrashIcon className="w-4 h-4" />
-                            </button>
-                         </div>
-                    ) : (
-                        <button 
+                    <h3 className="text-xs text-gray-400">Reference Image(s)</h3>
+                     <div className="grid grid-cols-3 gap-2">
+                        {previewUrls.map((url, index) => (
+                            <div key={url} className="relative w-full aspect-square bg-[#2b2b2b] border border-black/30 rounded-md">
+                                <img src={url} alt={`Reference ${index + 1}`} className="w-full h-full object-contain rounded" />
+                                <button 
+                                    onClick={() => handleRemoveImage(index)}
+                                    className="absolute top-1 right-1 bg-gray-800/70 hover:bg-red-500 text-white rounded-full p-0.5 transition-colors"
+                                    aria-label="Remove image"
+                                >
+                                    <TrashIcon className="w-3 h-3" />
+                                </button>
+                            </div>
+                        ))}
+                         <button 
                             onClick={handleChooseImage}
-                            className="w-full text-sm bg-[#4a4a4a] hover:bg-[#5a5a5a] text-white font-semibold py-2 px-3 rounded-md transition-colors text-center flex items-center justify-center gap-2"
+                            className="w-full aspect-square text-sm bg-[#4a4a4a] hover:bg-[#5a5a5a] text-white font-semibold rounded-md transition-colors text-center flex items-center justify-center"
+                            aria-label="Add reference image"
                         >
-                            <CompositionReferenceIcon className="w-5 h-5" />
-                            Add Reference Image
+                            <PlusIcon className="w-6 h-6" />
                         </button>
-                    )}
+                    </div>
+
                     <input
                         type="file"
                         ref={fileInputRef}
                         className="hidden"
                         accept="image/*"
                         onChange={handleFileChange}
+                        multiple
                     />
                 </div>
                 
